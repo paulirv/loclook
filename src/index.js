@@ -1,0 +1,142 @@
+/**
+ * Cloudflare Worker for Location Lookup
+ * 
+ * This worker provides an endpoint to retrieve user location information
+ * using Cloudflare's request headers (cf-ipcountry, cf-region-code, etc.)
+ */
+
+export default {
+  async fetch(request, env, ctx) {
+    // Handle CORS preflight requests
+    if (request.method === 'OPTIONS') {
+      return handleCORS();
+    }
+
+    const url = new URL(request.url);
+    
+    // Route handling
+    if (url.pathname === '/location' || url.pathname === '/') {
+      return handleLocationRequest(request);
+    }
+    
+    // Health check endpoint
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }), {
+        headers: {
+          'Content-Type': 'application/json',
+          ...getCORSHeaders()
+        }
+      });
+    }
+
+    // 404 for unknown routes
+    return new Response('Not Found', { 
+      status: 404,
+      headers: getCORSHeaders()
+    });
+  },
+};
+
+/**
+ * Handle location lookup requests
+ */
+function handleLocationRequest(request) {
+  try {
+    const locationData = extractLocationData(request);
+    
+    return new Response(JSON.stringify(locationData, null, 2), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCORSHeaders()
+      }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ 
+      error: 'Failed to process location request',
+      message: error.message 
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCORSHeaders()
+      }
+    });
+  }
+}
+
+/**
+ * Extract location information from Cloudflare headers
+ */
+function extractLocationData(request) {
+  const headers = request.headers;
+  
+  // Get the user's IP address
+  const ip = headers.get('CF-Connecting-IP') || 
+             headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || 
+             'unknown';
+
+  // Extract Cloudflare location headers
+  const locationData = {
+    ip: ip,
+    country: headers.get('CF-IPCountry') || null,
+    region: headers.get('CF-Region') || null,
+    regionCode: headers.get('CF-Region-Code') || null,
+    city: headers.get('CF-IPCity') || null,
+    postalCode: headers.get('CF-IPPostalCode') || null,
+    timezone: headers.get('CF-Timezone') || null,
+    latitude: headers.get('CF-IPLatitude') || null,
+    longitude: headers.get('CF-IPLongitude') || null,
+    metroCode: headers.get('CF-MetroCode') || null,
+    continent: headers.get('CF-IPContinent') || null,
+    asn: headers.get('CF-ASN') || null,
+    colo: headers.get('CF-Ray')?.split('-')[1] || null, // Cloudflare data center
+    
+    // Additional metadata
+    timestamp: new Date().toISOString(),
+    userAgent: headers.get('User-Agent') || null,
+    acceptLanguage: headers.get('Accept-Language') || null,
+    
+    // Request information
+    requestId: headers.get('CF-Ray') || null,
+    visitorId: headers.get('CF-Visitor') || null
+  };
+
+  // Parse numeric values
+  if (locationData.latitude) {
+    locationData.latitude = parseFloat(locationData.latitude);
+  }
+  if (locationData.longitude) {
+    locationData.longitude = parseFloat(locationData.longitude);
+  }
+  if (locationData.metroCode) {
+    locationData.metroCode = parseInt(locationData.metroCode, 10);
+  }
+  if (locationData.asn) {
+    locationData.asn = parseInt(locationData.asn, 10);
+  }
+
+  return locationData;
+}
+
+/**
+ * Handle CORS preflight requests
+ */
+function handleCORS() {
+  return new Response(null, {
+    status: 200,
+    headers: getCORSHeaders()
+  });
+}
+
+/**
+ * Get CORS headers for cross-origin requests
+ */
+function getCORSHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400', // 24 hours
+  };
+}

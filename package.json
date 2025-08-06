@@ -1,0 +1,23 @@
+{
+  "name": "cf-location-lookup",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for location lookup using CF headers",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production"
+  },
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "location",
+    "geolocation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
