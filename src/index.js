@@ -5,6 +5,39 @@
  * using Cloudflare's request headers (cf-ipcountry, cf-region-code, etc.)
  */
 
+/**
+ * Calculate data quality score based on available location fields
+ */
+function calculateDataQuality(headers) {
+  const fields = [
+    'CF-IPCountry',
+    'CF-Region', 
+    'CF-IPCity',
+    'CF-IPLatitude',
+    'CF-IPLongitude',
+    'CF-Timezone',
+    'CF-IPPostalCode'
+  ];
+  
+  const availableFields = fields.filter(field => headers.get(field)).length;
+  const totalFields = fields.length;
+  const percentage = Math.round((availableFields / totalFields) * 100);
+  
+  let quality = 'unknown';
+  if (percentage >= 80) quality = 'excellent';
+  else if (percentage >= 60) quality = 'good';
+  else if (percentage >= 40) quality = 'fair';
+  else if (percentage >= 20) quality = 'limited';
+  else quality = 'minimal';
+  
+  return {
+    score: percentage,
+    level: quality,
+    availableFields: availableFields,
+    totalFields: totalFields
+  };
+}
+
 export default {
   async fetch(request, env, ctx) {
     // Handle CORS preflight requests
@@ -17,6 +50,11 @@ export default {
     // Route handling
     if (url.pathname === '/location' || url.pathname === '/') {
       return handleLocationRequest(request);
+    }
+    
+    // Enhanced location with fallback
+    if (url.pathname === '/location-enhanced') {
+      return handleEnhancedLocationRequest(request, env);
     }
     
     // Health check endpoint
@@ -36,6 +74,71 @@ export default {
     });
   },
 };
+
+/**
+ * Handle enhanced location lookup with fallback
+ */
+async function handleEnhancedLocationRequest(request, env) {
+  try {
+    const locationData = extractLocationData(request);
+    
+    // If we have minimal data, try to enhance it
+    if (locationData.dataQuality.level === 'minimal' || locationData.dataQuality.level === 'limited') {
+      try {
+        // Use ipapi.co as fallback (free tier allows 1000 requests/day)
+        const fallbackResponse = await fetch(`https://ipapi.co/${locationData.ip}/json/`);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          
+          // Merge fallback data where CF data is missing
+          locationData.fallback = {
+            source: 'ipapi.co',
+            city: fallbackData.city || null,
+            region: fallbackData.region || null,
+            latitude: fallbackData.latitude || null,
+            longitude: fallbackData.longitude || null,
+            timezone: fallbackData.timezone || null,
+            postalCode: fallbackData.postal || null,
+            org: fallbackData.org || null
+          };
+          
+          // Update main fields if they were null
+          if (!locationData.city) locationData.city = fallbackData.city;
+          if (!locationData.region) locationData.region = fallbackData.region;
+          if (!locationData.latitude) locationData.latitude = fallbackData.latitude;
+          if (!locationData.longitude) locationData.longitude = fallbackData.longitude;
+          if (!locationData.timezone) locationData.timezone = fallbackData.timezone;
+          if (!locationData.postalCode) locationData.postalCode = fallbackData.postal;
+          
+          // Recalculate data quality
+          locationData.dataQuality.enhanced = true;
+          locationData.dataQuality.enhancedScore = calculateEnhancedDataQuality(locationData);
+        }
+      } catch (fallbackError) {
+        locationData.fallbackError = fallbackError.message;
+      }
+    }
+    
+    return new Response(JSON.stringify(locationData, null, 2), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCORSHeaders()
+      }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ 
+      error: 'Failed to process enhanced location request',
+      message: error.message 
+    }), {
+      status: 500,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getCORSHeaders()
+      }
+    });
+  }
+}
 
 /**
  * Handle location lookup requests
@@ -99,7 +202,13 @@ function extractLocationData(request) {
     
     // Request information
     requestId: headers.get('CF-Ray') || null,
-    visitorId: headers.get('CF-Visitor') || null
+    visitorId: headers.get('CF-Visitor') || null,
+    
+    // IP type detection
+    ipType: ip.includes(':') ? 'IPv6' : 'IPv4',
+    
+    // Data completeness indicator
+    dataQuality: calculateDataQuality(headers)
   };
 
   // Parse numeric values
@@ -127,6 +236,29 @@ function handleCORS() {
     status: 200,
     headers: getCORSHeaders()
   });
+}
+
+/**
+ * Calculate enhanced data quality score
+ */
+function calculateEnhancedDataQuality(locationData) {
+  const mainFields = ['country', 'region', 'city', 'latitude', 'longitude', 'timezone', 'postalCode'];
+  const availableFields = mainFields.filter(field => locationData[field] !== null).length;
+  const percentage = Math.round((availableFields / mainFields.length) * 100);
+  
+  let quality = 'unknown';
+  if (percentage >= 80) quality = 'excellent';
+  else if (percentage >= 60) quality = 'good';
+  else if (percentage >= 40) quality = 'fair';
+  else if (percentage >= 20) quality = 'limited';
+  else quality = 'minimal';
+  
+  return {
+    score: percentage,
+    level: quality,
+    availableFields: availableFields,
+    totalFields: mainFields.length
+  };
 }
 
 /**

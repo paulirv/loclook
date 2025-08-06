@@ -13,7 +13,37 @@ A Cloudflare Worker that provides an endpoint to look up user location informati
 ## Available Endpoints
 
 ### `GET /location` or `GET /`
-Returns comprehensive location information for the requesting IP address.
+Returns location information using only Cloudflare headers.
+
+### `GET /location-enhanced`
+Returns enhanced location information with fallback to external geolocation service when Cloudflare data is limited.
+
+**Enhanced Response Example:**
+```json
+{
+  "ip": "2605:59c0:2186:e110:3077:4761:cfc:a4d2",
+  "country": "US",
+  "region": "California",
+  "city": "San Francisco", 
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "timezone": "America/Los_Angeles",
+  "dataQuality": {
+    "enhanced": true,
+    "enhancedScore": {
+      "score": 86,
+      "level": "excellent"
+    }
+  },
+  "fallback": {
+    "source": "ipapi.co",
+    "city": "San Francisco",
+    "region": "California",
+    "latitude": 37.7749,
+    "longitude": -122.4194
+  }
+}
+```
 
 **Response Example:**
 ```json
@@ -183,9 +213,39 @@ routes = [
 
 ## Limitations
 
+- **Cloudflare Proxy Required**: Location headers are only available when requests are proxied through Cloudflare's network (orange cloud ☁️ in DNS settings or `*.workers.dev` domains)
+- **Local Development**: When testing locally with `wrangler dev`, location headers will be `null` since requests don't go through Cloudflare's edge
+- **IPv6 Limitations**: IPv6 addresses often provide less detailed location data (may only show country)
+- **Data Availability**: Some IP ranges only provide country-level information due to privacy or database limitations
 - Location accuracy depends on Cloudflare's IP geolocation database
 - Some fields may be `null` for certain IP ranges
 - Enterprise Cloudflare plans provide more detailed location data
+
+## Expected Behavior
+
+Your worker response will vary based on your network:
+
+**Typical IPv4 Response** (more detailed):
+```json
+{
+  "country": "US",
+  "region": "California",
+  "city": "San Francisco",
+  "latitude": 37.7749,
+  "longitude": -122.4194
+}
+```
+
+**Typical IPv6 Response** (less detailed):
+```json
+{
+  "country": "US", 
+  "region": null,
+  "city": null,
+  "latitude": null,
+  "longitude": null
+}
+```
 
 ## Development
 
@@ -195,6 +255,8 @@ npm run dev
 ```
 
 This starts a local development server with hot reloading.
+
+⚠️ **Note**: When testing locally, Cloudflare location headers won't be available since requests don't go through Cloudflare's edge network. Deploy to test with real location data.
 
 ### Testing Endpoints
 ```bash
