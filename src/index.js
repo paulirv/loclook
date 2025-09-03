@@ -186,7 +186,7 @@ function extractLocationData(request) {
     region: headers.get('CF-Region') || null,
     regionCode: headers.get('CF-Region-Code') || null,
     city: headers.get('CF-IPCity') || null,
-    postalCode: headers.get('CF-IPPostalCode') || null,
+    postalCode: headers.get('CF-postal-code') || null,
     timezone: headers.get('CF-Timezone') || null,
     latitude: headers.get('CF-IPLatitude') || null,
     longitude: headers.get('CF-IPLongitude') || null,
