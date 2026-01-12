@@ -33,3 +33,17 @@ Key functions:
 - IPv6 addresses typically return less detailed location data
 - The enhanced endpoint uses ipapi.co free tier (1000 requests/day limit)
 - CORS is enabled for all origins
+
+## Git Workflow
+
+See `GIT_WORKFLOW.md` for full details. Key points:
+
+- **Branch**: `main` is production-ready; use `feature/`, `fix/`, `hotfix/` branches
+- **Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/) format (e.g., `feat:`, `fix:`, `chore:`). Omit AI-generated boilerplate from commit messages.
+- **Deploy**: Test locally → deploy to staging → deploy to production
+
+```bash
+npm run deploy:staging     # Deploy to staging first
+npm run deploy:production  # Then production
+npx wrangler tail          # View live logs
+```
